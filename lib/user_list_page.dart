@@ -1,60 +1,70 @@
+import 'package:chat_demo/login_page.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'chat_page.dart';
+import 'group_list_page.dart';
 
 class UserListPage extends StatefulWidget {
   const UserListPage({super.key});
-
   @override
   State<UserListPage> createState() => _UserListPageState();
 }
 
 class _UserListPageState extends State<UserListPage> {
   final supabase = Supabase.instance.client;
+  late final String myId = supabase.auth.currentUser!.id;
 
-  Future<List<Map<String, dynamic>>> getUsers() async {
-    final userId = supabase.auth.currentUser!.id;
-
-    final response = await supabase
-        .from('users')
-        .select()
-        .neq('id', userId);
-
-    return List<Map<String, dynamic>>.from(response);
+  Future<List<Map<String, dynamic>>> _getUsers() async {
+    final res = await supabase.from('users').select('id, email').neq('id', myId);
+    return List<Map<String, dynamic>>.from(res);
   }
 
-  void _signOut() async {
+  Future<void> _logout() async {
     await supabase.auth.signOut();
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed('/');
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginPage()), (_) => false);
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text("All Users"),
+          title: const Text('Select User'),
           actions: [
             IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: _signOut,
-            )
+              icon: const Icon(Icons.group),
+              tooltip: 'Group Chats',
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupListPage()));
+              },
+            ),
+            PopupMenuButton<String>(
+              onSelected: (_) => _logout(),
+              itemBuilder: (_) => [const PopupMenuItem(value: 'logout', child: Text('Log out'))],
+            ),
           ],
         ),
         body: FutureBuilder<List<Map<String, dynamic>>>(
-          future: getUsers(),
+          future: _getUsers(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-
             final users = snapshot.data!;
-            return ListView.builder(
-              itemCount: users.length,
-              itemBuilder: (_, i) {
-                final user = users[i];
-                return ListTile(
-                  title: Text(user['email'] ?? 'No email'),
-                );
-              },
+            if (users.isEmpty) return const Center(child: Text('No users'));
+            return ListView(
+              children: users
+                  .map(
+                    (user) => ListTile(
+                      title: Text(user['email']),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatPage(peerId: user['id'], peerEmail: user['email']),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             );
           },
         ),
