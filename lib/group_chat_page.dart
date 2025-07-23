@@ -34,7 +34,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
   Future<void> _loadMessages() async {
     final res = await supabase
         .from('group_messages')
-        .select('id, content, sender_id, created_at, users(email)')
+        .select('id, content, sender_id, created_at, users!fk_sender_user(email)')
         .eq('group_id', widget.groupId)
         .order('created_at');
     messages = List<Map<String, dynamic>>.from(res);
@@ -81,7 +81,6 @@ class _GroupChatPageState extends State<GroupChatPage> {
       'users': {'email': supabase.auth.currentUser!.email}
     };
 
-    // Optimistic update
     setState(() {
       messages.add(newMessage);
       _scrollToBottom();
@@ -110,6 +109,61 @@ class _GroupChatPageState extends State<GroupChatPage> {
     });
   }
 
+  void _showRenameDialog() {
+    final controller = TextEditingController(text: widget.groupName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Group'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'New group name'),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            child: const Text('Save'),
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty && newName != widget.groupName) {
+                Navigator.pop(context);
+                await _renameGroup(newName);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _renameGroup(String newName) async {
+    try {
+      await supabase
+          .from('groups')
+          .update({'name': newName})
+          .eq('id', widget.groupId);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GroupChatPage(
+            groupId: widget.groupId,
+            groupName: newName,
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Rename failed: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to rename group')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _msgController.dispose();
@@ -120,7 +174,16 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(widget.groupName)),
+        appBar: AppBar(
+          title: Text(widget.groupName),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: 'Rename Group',
+              onPressed: _showRenameDialog,
+            ),
+          ],
+        ),
         body: Column(
           children: [
             Expanded(
@@ -138,7 +201,8 @@ class _GroupChatPageState extends State<GroupChatPage> {
                     child: Container(
                       margin: const EdgeInsets.symmetric(vertical: 6),
                       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                      constraints:
+                          BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                       decoration: BoxDecoration(
                         color: isMe ? Colors.blue.shade700 : Colors.grey.shade300,
                         borderRadius: BorderRadius.only(
@@ -147,7 +211,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
                           bottomLeft: Radius.circular(isMe ? 16 : 0),
                           bottomRight: Radius.circular(isMe ? 0 : 16),
                         ),
-                        boxShadow: [
+                        boxShadow: const [
                           BoxShadow(
                             color: Colors.black12,
                             blurRadius: 4,
@@ -211,3 +275,4 @@ class _GroupChatPageState extends State<GroupChatPage> {
         ),
       );
 }
+
